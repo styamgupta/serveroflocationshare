@@ -33,6 +33,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // MongoDB connection
+console.log(process.env.MONGODB_URI);
+
 mongoose.connect(process.env.MONGODB_URI || 'MONGO_URI=mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     // useNewUrlParser: true,
     // useUnifiedTopology: true,
