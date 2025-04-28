@@ -33,7 +33,7 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/location-sharing-app', {
+mongoose.connect(process.env.MONGODB_URI || 'MONGO_URI=mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     // useNewUrlParser: true,
     // useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000,
