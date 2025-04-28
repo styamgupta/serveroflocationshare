@@ -15,7 +15,7 @@ const server = http.createServer(app);
 // Enhanced Socket.IO configuration
 const io = socketIo(server, {
     cors: {
-        origin: process.env.CLIENT_URL || "http://localhost:3000",
+        origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
         methods: ["GET", "POST"],
         credentials: true
     },
@@ -25,7 +25,7 @@ const io = socketIo(server, {
 
 // Middleware setup
 app.use(cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app/",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
