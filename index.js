@@ -25,9 +25,10 @@ const io = socketIo(server, {
 
 // Middleware setup
 app.use(cors({
-    origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app/",
+    origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
     methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true 
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -35,7 +36,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // MongoDB connection
 console.log(process.env.MONGODB_URI);
 
-mongoose.connect(process.env.MONGODB_URI || 'MONGO_URI=mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
+mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     // useNewUrlParser: true,
     // useUnifiedTopology: true,
     serverSelectionTimeoutMS: 5000,
@@ -333,7 +334,7 @@ app.post('/api/update-location', authenticate, async (req, res) => {
 
         const user = await User.findByIdAndUpdate(
             req.user._id,
-            { 
+            {
                 currentLocation: { lat, lng },
                 isSharingLocation: true
             },
@@ -373,7 +374,7 @@ app.post('/api/stop-sharing', authenticate, async (req, res) => {
 
         const user = await User.findByIdAndUpdate(
             req.user._id,
-            { 
+            {
                 isSharingLocation: false,
                 currentLocation: null
             },
@@ -462,7 +463,7 @@ io.on('connection', (socket) => {
 
             const user = await User.findByIdAndUpdate(
                 userId,
-                { 
+                {
                     currentLocation: location,
                     isSharingLocation: true
                 },
@@ -492,7 +493,7 @@ io.on('connection', (socket) => {
 
             const user = await User.findByIdAndUpdate(
                 userId,
-                { 
+                {
                     isSharingLocation: false,
                     currentLocation: null
                 },
