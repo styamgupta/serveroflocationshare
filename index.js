@@ -13,7 +13,9 @@ const app = express();
 const server = http.createServer(app);
 
 // Enhanced Socket.IO configuration
+console.log(process.env.CLIENT_URL);
 const io = socketIo(server, {
+
     cors: {
         origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
         methods: ["GET", "POST"],
@@ -28,13 +30,12 @@ app.use(cors({
     origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true 
+    credentials: true
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // MongoDB connection
-console.log(process.env.MONGODB_URI);
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
     // useNewUrlParser: true,
@@ -227,7 +228,7 @@ app.post('/api/login', async (req, res) => {
             });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch = bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
