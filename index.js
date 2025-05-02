@@ -13,9 +13,8 @@ const app = express();
 const server = http.createServer(app);
 
 // Enhanced Socket.IO configuration
-console.log(process.env.CLIENT_URL);
+console.log(process.env.CLIENT_URL,'client url');
 const io = socketIo(server, {
-
     cors: {
         origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
         methods: ["GET", "POST"],
