@@ -149,6 +149,7 @@ app.post('/api/register', async (req, res) => {
     try {
         const { mobile, password, userType, name, vehicleNumber } = req.body;
 
+        // Validate required fields
         if (!mobile || !password || !userType || !name) {
             return res.status(400).json({
                 success: false,
@@ -163,6 +164,7 @@ app.post('/api/register', async (req, res) => {
             });
         }
 
+        // Check if user already exists
         const existingUser = await User.findOne({ mobile });
         if (existingUser) {
             return res.status(409).json({
@@ -171,6 +173,7 @@ app.post('/api/register', async (req, res) => {
             });
         }
 
+        // Hash password and create user
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = new User({
             mobile,
@@ -188,7 +191,8 @@ app.post('/api/register', async (req, res) => {
             { expiresIn: '7d' }
         );
 
-        res.status(201).json({
+        // Return JSON response
+        return res.status(201).json({
             success: true,
             user: {
                 _id: user._id,
@@ -199,10 +203,12 @@ app.post('/api/register', async (req, res) => {
             },
             token
         });
+
     } catch (error) {
-        res.status(500).json({
+        console.error('Register API error:', error); // For server logs
+        return res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Something went wrong on the server'
         });
     }
 });
