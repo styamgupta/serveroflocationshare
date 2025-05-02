@@ -33,6 +33,7 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+console.log('API Base URL:', process.env.CLIENT_URL)
 
 // MongoDB connection
 
