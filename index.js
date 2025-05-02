@@ -215,7 +215,7 @@ app.post('/api/login', async (req, res) => {
         if (!mobile || !password || !userType) {
             return res.status(400).json({
                 success: false,
-                error: 'Mobile, password and userType are required'
+                error: 'Mobile, password, and userType are required',
             });
         }
 
@@ -223,25 +223,29 @@ app.post('/api/login', async (req, res) => {
         if (!user) {
             return res.status(401).json({
                 success: false,
-                error: 'Invalid credentials'
+                error: 'Invalid credentials',
             });
         }
 
-        const isMatch = bcrypt.compare(password, user.password);
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
-                error: 'Invalid credentials'
+                error: 'Invalid credentials',
             });
         }
 
         const token = jwt.sign(
-            { _id: user._id, mobile: user.mobile, userType: user.userType },
+            {
+                _id: user._id,
+                mobile: user.mobile,
+                userType: user.userType,
+            },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '7d' }
         );
 
-        res.json({
+        return res.status(200).json({
             success: true,
             user: {
                 _id: user._id,
@@ -250,17 +254,19 @@ app.post('/api/login', async (req, res) => {
                 name: user.name,
                 currentLocation: user.currentLocation,
                 isSharingLocation: user.isSharingLocation,
-                ...(user.userType === 'driver' && { vehicleNumber: user.vehicleNumber })
+                ...(user.userType === 'driver' && { vehicleNumber: user.vehicleNumber }),
             },
-            token
+            token,
         });
     } catch (error) {
-        res.status(500).json({
+        console.error('Login error:', error); // Optional: for server logs
+        return res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Internal server error',
         });
     }
 });
+
 
 // Verify token
 app.get('/api/verify', authenticate, (req, res) => {
