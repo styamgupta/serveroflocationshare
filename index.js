@@ -13,7 +13,7 @@ const rateLimit = require('express-rate-limit');
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
-
+app.use(express.json());
 // Enhanced Socket.IO configuration
 const io = socketIo(server, {
     cors: {
