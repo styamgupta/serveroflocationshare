@@ -142,7 +142,7 @@ const userSchema = new mongoose.Schema({
     }
 });
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.model('Users', userSchema);
 
 // Enhanced authentication middleware
 const authenticate = async (req, res, next) => {
@@ -202,7 +202,7 @@ const authenticate = async (req, res, next) => {
 // API Routes with enhanced validation and error handling
 
 // User registration with validation
-app.post('/api/register', [
+pp.post('/api/register', [
     body('mobile').trim().isLength({ min: 10, max: 10 }).withMessage('Mobile must be 10 digits').isNumeric(),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
     body('userType').isIn(['user', 'driver']).withMessage('Invalid user type'),
@@ -221,7 +221,7 @@ app.post('/api/register', [
 
         const { mobile, password, userType, name, vehicleNumber } = req.body;
 
-        // Check if user already exists
+        // Check if user already exists (this helps with user experience)
         const existingUser = await User.findOne({ mobile });
         if (existingUser) {
             return res.status(409).json({
@@ -262,6 +262,22 @@ app.post('/api/register', [
 
     } catch (error) {
         console.error('Register error:', error);
+        
+        // Handle specific errors
+        if (error.name === 'MongoError' && error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                error: 'Mobile number already registered'
+            });
+        }
+        
+        if (error.name === 'ValidationError') {
+            return res.status(400).json({
+                success: false,
+                error: error.message
+            });
+        }
+
         return res.status(500).json({
             success: false,
             error: 'Server error during registration'
