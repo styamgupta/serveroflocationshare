@@ -15,6 +15,7 @@ const app = express();
 const server = http.createServer(app);
 app.use(express.json());
 // Enhanced Socket.IO configuration
+app.set('trust proxy', true);
 const io = socketIo(server, {
     cors: {
         origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
@@ -122,11 +123,14 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: '',
         validate: {
-            validator: function (v) {
-                return this.userType === 'driver' ? v && v.length > 0 : true;
+            validator: function(v) {
+              if (this.userType === 'driver') {
+                return v && v.trim().length > 0; // Reject empty strings
+              }
+              return true;
             },
             message: 'Vehicle number is required for drivers'
-        }
+          }
     },
     isSharingLocation: {
         type: Boolean,
@@ -310,6 +314,8 @@ app.post('/api/login', [
                 error: 'Invalid credentials'
             });
         }
+        console.log(user);
+        
         console.log(password, user.password);
         
         if (!password) {
