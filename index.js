@@ -300,9 +300,9 @@ app.post('/api/login', [
                 errors: errors.array().map(err => err.msg)
             });
         }
-
+        
         const { mobile, password, userType } = req.body;
-
+        
         const user = await UsersData.findOne({ mobile, userType });
         if (!user) {
             return res.status(401).json({
@@ -310,8 +310,13 @@ app.post('/api/login', [
                 error: 'Invalid credentials'
             });
         }
+        console.log(password, user.password);
+        
+        if (!password) {
+            return res.status(400).json({ error: "Password is required" });
+          }
 
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch = bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
