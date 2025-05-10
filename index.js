@@ -202,7 +202,7 @@ const authenticate = async (req, res, next) => {
 // API Routes with enhanced validation and error handling
 
 // User registration with validation
-pp.post('/api/register', [
+app.post('/api/register', [
     body('mobile').trim().isLength({ min: 10, max: 10 }).withMessage('Mobile must be 10 digits').isNumeric(),
     body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
     body('userType').isIn(['user', 'driver']).withMessage('Invalid user type'),
