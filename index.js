@@ -7,13 +7,14 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
 
 // Enhanced Socket.IO configuration
-console.log(process.env.CLIENT_URL,'client url');
 const io = socketIo(server, {
     cors: {
         origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
@@ -24,36 +25,50 @@ const io = socketIo(server, {
     pingInterval: 25000
 });
 
-// Middleware setup
+// Security middleware
 app.use(cors({
     origin: process.env.CLIENT_URL || "https://clientoflocationshare.vercel.app",
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
 }));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-console.log('API Base URL:', process.env.CLIENT_URL)
+app.use(bodyParser.json({ limit: '10kb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10kb' }));
 
-// MongoDB connection
+// Rate limiting
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later'
+});
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
-    // useNewUrlParser: true,
-    // useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000
-})
-    .then(() => console.log("MongoDB connected successfully"))
-    .catch(err => {
+// Apply rate limiting to all API routes
+app.use('/api/', apiLimiter);
+
+// MongoDB connection with enhanced error handling
+const connectWithRetry = async () => {
+    try {
+        await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://satyamguptasg1234asd:Satyam%402024@cluster0.ugfa9.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0', {
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            retryWrites: true,
+            w: 'majority'
+        });
+        console.log("MongoDB connected successfully");
+    } catch (err) {
         console.error("MongoDB connection error:", err);
-        process.exit(1);
-    });
+        // Retry after 5 seconds
+        setTimeout(connectWithRetry, 5000);
+    }
+};
 
-// User Schema
+connectWithRetry();
+
+// User Schema with enhanced validation
 const userSchema = new mongoose.Schema({
     mobile: {
         type: String,
-        required: true,
+        required: [true, 'Mobile number is required'],
         unique: true,
         validate: {
             validator: function (v) {
@@ -64,29 +79,51 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
-        required: true,
-        minlength: 6
+        required: [true, 'Password is required'],
+        minlength: [6, 'Password must be at least 6 characters long'],
+        select: false
     },
     userType: {
         type: String,
-        enum: ['user', 'driver'],
-        required: true
+        enum: {
+            values: ['user', 'driver'],
+            message: 'User type must be either "user" or "driver"'
+        },
+        required: [true, 'User type is required']
     },
     currentLocation: {
-        lat: { type: Number, min: -90, max: 90 },
-        lng: { type: Number, min: -180, max: 180 }
+        type: {
+            lat: { 
+                type: Number, 
+                min: [-90, 'Latitude must be between -90 and 90'], 
+                max: [90, 'Latitude must be between -90 and 90'] 
+            },
+            lng: { 
+                type: Number, 
+                min: [-180, 'Longitude must be between -180 and 180'], 
+                max: [180, 'Longitude must be between -180 and 180'] 
+            }
+        },
+        validate: {
+            validator: function(loc) {
+                if (!loc) return true;
+                return loc.lat >= -90 && loc.lat <= 90 && loc.lng >= -180 && loc.lng <= 180;
+            },
+            message: 'Invalid coordinates'
+        }
     },
     name: {
         type: String,
-        required: true,
-        trim: true
+        required: [true, 'Name is required'],
+        trim: true,
+        maxlength: [50, 'Name cannot be longer than 50 characters']
     },
     vehicleNumber: {
         type: String,
         default: '',
         validate: {
             validator: function (v) {
-                return this.userType === 'driver' ? v.length > 0 : true;
+                return this.userType === 'driver' ? v && v.length > 0 : true;
             },
             message: 'Vehicle number is required for drivers'
         }
@@ -107,7 +144,7 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Authentication middleware
+// Enhanced authentication middleware
 const authenticate = async (req, res, next) => {
     try {
         const authHeader = req.header('Authorization');
@@ -120,6 +157,13 @@ const authenticate = async (req, res, next) => {
 
         const token = authHeader.replace('Bearer ', '');
         const decoded = jwt.verify(token, process.env.JWT_SECRET || '123sec');
+
+        if (!decoded._id || !decoded.mobile) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid token payload'
+            });
+        }
 
         const user = await User.findOne({
             _id: decoded._id,
@@ -136,34 +180,46 @@ const authenticate = async (req, res, next) => {
         req.user = user;
         next();
     } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+            return res.status(401).json({
+                success: false,
+                error: 'Token expired'
+            });
+        }
+        if (error.name === 'JsonWebTokenError') {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid token'
+            });
+        }
         res.status(401).json({
             success: false,
-            error: 'Please authenticate with a valid token'
+            error: 'Authentication failed'
         });
     }
 };
 
-// API Routes
+// API Routes with enhanced validation and error handling
 
-// User registration
-app.post('/api/register', async (req, res) => {
+// User registration with validation
+app.post('/api/register', [
+    body('mobile').trim().isLength({ min: 10, max: 10 }).withMessage('Mobile must be 10 digits').isNumeric(),
+    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+    body('userType').isIn(['user', 'driver']).withMessage('Invalid user type'),
+    body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 50 }).withMessage('Name too long'),
+    body('vehicleNumber').if(body('userType').equals('driver')).notEmpty().withMessage('Vehicle number is required for drivers')
+], async (req, res) => {
     try {
+        // Validate input
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                errors: errors.array().map(err => err.msg)
+            });
+        }
+
         const { mobile, password, userType, name, vehicleNumber } = req.body;
-
-        // Validate required fields
-        if (!mobile || !password || !userType || !name) {
-            return res.status(400).json({
-                success: false,
-                error: 'Missing required fields'
-            });
-        }
-
-        if (userType === 'driver' && !vehicleNumber) {
-            return res.status(400).json({
-                success: false,
-                error: 'Vehicle number is required for drivers'
-            });
-        }
 
         // Check if user already exists
         const existingUser = await User.findOne({ mobile });
@@ -192,7 +248,6 @@ app.post('/api/register', async (req, res) => {
             { expiresIn: '7d' }
         );
 
-        // Return JSON response
         return res.status(201).json({
             success: true,
             user: {
@@ -206,31 +261,37 @@ app.post('/api/register', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Register API error:', error); // For server logs
+        console.error('Register error:', error);
         return res.status(500).json({
             success: false,
-            error: 'Something went wrong on the server'
+            error: 'Server error during registration'
         });
     }
 });
 
-// User login
-app.post('/api/login', async (req, res) => {
+// User login with validation
+app.post('/api/login', [
+    body('mobile').trim().notEmpty().withMessage('Mobile is required'),
+    body('password').notEmpty().withMessage('Password is required'),
+    body('userType').isIn(['user', 'driver']).withMessage('Invalid user type')
+], async (req, res) => {
     try {
-        const { mobile, password, userType } = req.body;
-
-        if (!mobile || !password || !userType) {
+        // Validate input
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
             return res.status(400).json({
                 success: false,
-                error: 'Mobile, password, and userType are required',
+                errors: errors.array().map(err => err.msg)
             });
         }
+
+        const { mobile, password, userType } = req.body;
 
         const user = await User.findOne({ mobile, userType });
         if (!user) {
             return res.status(401).json({
                 success: false,
-                error: 'Invalid credentials',
+                error: 'Invalid credentials'
             });
         }
 
@@ -238,7 +299,7 @@ app.post('/api/login', async (req, res) => {
         if (!isMatch) {
             return res.status(401).json({
                 success: false,
-                error: 'Invalid credentials',
+                error: 'Invalid credentials'
             });
         }
 
@@ -266,22 +327,27 @@ app.post('/api/login', async (req, res) => {
             token,
         });
     } catch (error) {
-        console.error('Login error:', error); // Optional: for server logs
+        console.error('Login error:', error);
         return res.status(500).json({
             success: false,
-            error: 'Internal server error',
+            error: 'Server error during login'
         });
     }
 });
 
-
 // Verify token
 app.get('/api/verify', authenticate, (req, res) => {
-    res.send({ user: req.user });
+    res.json({ 
+        success: true,
+        user: req.user 
+    });
 });
 
-// Get all drivers
-app.get('/api/drivers', authenticate, async (req, res) => {
+// Get all drivers with pagination
+app.get('/api/drivers', authenticate, [
+    body('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
+    body('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100')
+], async (req, res) => {
     try {
         if (req.user.userType !== 'user') {
             return res.status(403).json({
@@ -290,17 +356,25 @@ app.get('/api/drivers', authenticate, async (req, res) => {
             });
         }
 
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                success: false,
+                errors: errors.array().map(err => err.msg)
+            });
+        }
+
         const { page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
 
         const drivers = await User.find(
-            { userType: 'driver' },
+            { userType: 'driver', isSharingLocation: true },
             { _id: 1, name: 1, currentLocation: 1, vehicleNumber: 1, isSharingLocation: 1 }
         )
             .skip(skip)
             .limit(parseInt(limit));
 
-        const total = await User.countDocuments({ userType: 'driver' });
+        const total = await User.countDocuments({ userType: 'driver', isSharingLocation: true });
 
         res.json({
             success: true,
@@ -313,15 +387,19 @@ app.get('/api/drivers', authenticate, async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Get drivers error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Server error while fetching drivers'
         });
     }
 });
 
-// Update location
-app.post('/api/update-location', authenticate, async (req, res) => {
+// Update location with validation
+app.post('/api/update-location', authenticate, [
+    body('lat').isFloat({ min: -90, max: 90 }).withMessage('Latitude must be between -90 and 90'),
+    body('lng').isFloat({ min: -180, max: 180 }).withMessage('Longitude must be between -180 and 180')
+], async (req, res) => {
     try {
         if (req.user.userType !== 'driver') {
             return res.status(403).json({
@@ -330,20 +408,15 @@ app.post('/api/update-location', authenticate, async (req, res) => {
             });
         }
 
-        const { lat, lng } = req.body;
-        if (lat === undefined || lng === undefined) {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
             return res.status(400).json({
                 success: false,
-                error: 'Latitude and longitude are required'
+                errors: errors.array().map(err => err.msg)
             });
         }
 
-        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid coordinates'
-            });
-        }
+        const { lat, lng } = req.body;
 
         const user = await User.findByIdAndUpdate(
             req.user._id,
@@ -353,6 +426,13 @@ app.post('/api/update-location', authenticate, async (req, res) => {
             },
             { new: true, select: '-password' }
         );
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
 
         io.to('users').emit('locationUpdate', {
             userId: user._id,
@@ -368,9 +448,10 @@ app.post('/api/update-location', authenticate, async (req, res) => {
             location: user.currentLocation
         });
     } catch (error) {
+        console.error('Update location error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Server error while updating location'
         });
     }
 });
@@ -394,6 +475,13 @@ app.post('/api/stop-sharing', authenticate, async (req, res) => {
             { new: true, select: '-password' }
         );
 
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'User not found'
+            });
+        }
+
         io.to('users').emit('driverStoppedSharing', {
             userId: user._id
         });
@@ -403,9 +491,10 @@ app.post('/api/stop-sharing', authenticate, async (req, res) => {
             message: 'Location sharing stopped'
         });
     } catch (error) {
+        console.error('Stop sharing error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Server error while stopping location sharing'
         });
     }
 });
@@ -427,29 +516,37 @@ app.get('/api/profile', authenticate, async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Profile error:', error);
         res.status(500).json({
             success: false,
-            error: error.message
+            error: 'Server error while fetching profile'
         });
     }
 });
 
-// Socket.IO logic
+// Enhanced Socket.IO logic with error handling
 io.on('connection', (socket) => {
     console.log(`New client connected: ${socket.id}`);
 
-    socket.on('join', async ({ userId, userType, token }) => {
+    socket.on('join', async ({ userId, userType, token }, callback) => {
         try {
+            if (!userId || !userType || !token) {
+                throw new Error('Missing required fields');
+            }
+
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
             const user = await User.findById(decoded._id);
 
             if (!user) {
-                socket.disconnect();
-                return;
+                throw new Error('User not found');
+            }
+
+            if (decoded._id !== userId) {
+                throw new Error('Unauthorized');
             }
 
             socket.join(userType === 'driver' ? 'drivers' : 'users');
-            socket.userId = userId; // Store userId for later use
+            socket.userId = userId;
             console.log(`${userId} (${user.name}) joined as ${userType}`);
 
             if (userType === 'driver' && user.currentLocation && user.isSharingLocation) {
@@ -461,14 +558,25 @@ io.on('connection', (socket) => {
                     timestamp: new Date()
                 });
             }
+
+            if (typeof callback === 'function') {
+                callback({ status: 'success' });
+            }
         } catch (error) {
-            console.error('Socket authentication error:', error);
+            console.error('Socket join error:', error.message);
+            if (typeof callback === 'function') {
+                callback({ status: 'error', message: error.message });
+            }
             socket.disconnect();
         }
     });
 
-    socket.on('updateLocation', async ({ userId, location, token }) => {
+    socket.on('updateLocation', async ({ userId, location, token }, callback) => {
         try {
+            if (!userId || !location || !token) {
+                throw new Error('Missing required fields');
+            }
+
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
             if (decoded._id !== userId) {
                 throw new Error('Unauthorized');
@@ -483,7 +591,11 @@ io.on('connection', (socket) => {
                 { new: true }
             );
 
-            if (user && user.userType === 'driver') {
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            if (user.userType === 'driver') {
                 io.to('users').emit('locationUpdate', {
                     userId: user._id,
                     location: user.currentLocation,
@@ -492,13 +604,24 @@ io.on('connection', (socket) => {
                     timestamp: new Date()
                 });
             }
+
+            if (typeof callback === 'function') {
+                callback({ status: 'success' });
+            }
         } catch (error) {
-            console.error('Error updating location:', error);
+            console.error('Update location socket error:', error.message);
+            if (typeof callback === 'function') {
+                callback({ status: 'error', message: error.message });
+            }
         }
     });
 
-    socket.on('stopSharing', async ({ userId, token }) => {
+    socket.on('stopSharing', async ({ userId, token }, callback) => {
         try {
+            if (!userId || !token) {
+                throw new Error('Missing required fields');
+            }
+
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
             if (decoded._id !== userId) {
                 throw new Error('Unauthorized');
@@ -513,11 +636,22 @@ io.on('connection', (socket) => {
                 { new: true }
             );
 
+            if (!user) {
+                throw new Error('User not found');
+            }
+
             io.to('users').emit('driverStoppedSharing', {
                 userId: user._id
             });
+
+            if (typeof callback === 'function') {
+                callback({ status: 'success' });
+            }
         } catch (error) {
-            console.error('Error stopping location sharing:', error);
+            console.error('Stop sharing socket error:', error.message);
+            if (typeof callback === 'function') {
+                callback({ status: 'error', message: error.message });
+            }
         }
     });
 
@@ -527,11 +661,48 @@ io.on('connection', (socket) => {
             io.to('users').emit('driverStoppedSharing', { userId: socket.userId });
         }
     });
+
+    socket.on('error', (error) => {
+        console.error(`Socket error for ${socket.id}:`, error);
+    });
 });
 
-// Error handling middleware
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: 'Endpoint not found'
+    });
+});
+
+// Global error handler
 app.use((err, req, res, next) => {
-    console.error(err.stack);
+    console.error('Global error handler:', err.stack);
+    
+    // Handle mongoose validation errors
+    if (err.name === 'ValidationError') {
+        return res.status(400).json({
+            success: false,
+            error: Object.values(err.errors).map(e => e.message)
+        });
+    }
+    
+    // Handle JWT errors
+    if (err.name === 'JsonWebTokenError') {
+        return res.status(401).json({
+            success: false,
+            error: 'Invalid token'
+        });
+    }
+    
+    // Handle rate limit errors
+    if (err.name === 'RateLimitError') {
+        return res.status(429).json({
+            success: false,
+            error: 'Too many requests, please try again later'
+        });
+    }
+
     res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -543,4 +714,15 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled Rejection:', err);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    process.exit(1);
 });
