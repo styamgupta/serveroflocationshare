@@ -142,7 +142,7 @@ const userSchema = new mongoose.Schema({
     }
 });
 
-const User = mongoose.model('Users', userSchema);
+const UsersData = mongoose.model('UsersData', userSchema);
 
 // Enhanced authentication middleware
 const authenticate = async (req, res, next) => {
@@ -165,7 +165,7 @@ const authenticate = async (req, res, next) => {
             });
         }
 
-        const user = await User.findOne({
+        const user = await UsersData.findOne({
             _id: decoded._id,
             mobile: decoded.mobile
         }).select('-password');
@@ -222,7 +222,7 @@ app.post('/api/register', [
         const { mobile, password, userType, name, vehicleNumber } = req.body;
 
         // Check if user already exists (this helps with user experience)
-        const existingUser = await User.findOne({ mobile });
+        const existingUser = await UsersData.findOne({ mobile });
         if (existingUser) {
             return res.status(409).json({
                 success: false,
@@ -232,7 +232,7 @@ app.post('/api/register', [
 
         // Hash password and create user
         const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new User({
+        const user = new UsersData({
             mobile,
             password: hashedPassword,
             userType,
@@ -303,7 +303,7 @@ app.post('/api/login', [
 
         const { mobile, password, userType } = req.body;
 
-        const user = await User.findOne({ mobile, userType });
+        const user = await UsersData.findOne({ mobile, userType });
         if (!user) {
             return res.status(401).json({
                 success: false,
@@ -383,14 +383,14 @@ app.get('/api/drivers', authenticate, [
         const { page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
 
-        const drivers = await User.find(
+        const drivers = await UsersData.find(
             { userType: 'driver', isSharingLocation: true },
             { _id: 1, name: 1, currentLocation: 1, vehicleNumber: 1, isSharingLocation: 1 }
         )
             .skip(skip)
             .limit(parseInt(limit));
 
-        const total = await User.countDocuments({ userType: 'driver', isSharingLocation: true });
+        const total = await UsersData.countDocuments({ userType: 'driver', isSharingLocation: true });
 
         res.json({
             success: true,
@@ -434,7 +434,7 @@ app.post('/api/update-location', authenticate, [
 
         const { lat, lng } = req.body;
 
-        const user = await User.findByIdAndUpdate(
+        const user = await UsersData.findByIdAndUpdate(
             req.user._id,
             {
                 currentLocation: { lat, lng },
@@ -482,7 +482,7 @@ app.post('/api/stop-sharing', authenticate, async (req, res) => {
             });
         }
 
-        const user = await User.findByIdAndUpdate(
+        const user = await UsersData.findByIdAndUpdate(
             req.user._id,
             {
                 isSharingLocation: false,
@@ -551,7 +551,7 @@ io.on('connection', (socket) => {
             }
 
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-            const user = await User.findById(decoded._id);
+            const user = await UsersData.findById(decoded._id);
 
             if (!user) {
                 throw new Error('User not found');
@@ -598,7 +598,7 @@ io.on('connection', (socket) => {
                 throw new Error('Unauthorized');
             }
 
-            const user = await User.findByIdAndUpdate(
+            const user = await UsersData.findByIdAndUpdate(
                 userId,
                 {
                     currentLocation: location,
@@ -643,7 +643,7 @@ io.on('connection', (socket) => {
                 throw new Error('Unauthorized');
             }
 
-            const user = await User.findByIdAndUpdate(
+            const user = await UsersData.findByIdAndUpdate(
                 userId,
                 {
                     isSharingLocation: false,
