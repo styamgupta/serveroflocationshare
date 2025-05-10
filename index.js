@@ -307,7 +307,7 @@ app.post('/api/login', [
         
         const { mobile, password, userType } = req.body;
         
-        const user = await UsersData.findOne({ mobile, userType });
+        const user = await UsersData.findOne({ mobile, userType }).select('password');;
         if (!user) {
             return res.status(401).json({
                 success: false,
