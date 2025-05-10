@@ -82,7 +82,6 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: [true, 'Password is required'],
         minlength: [6, 'Password must be at least 6 characters long'],
-        select: false
     },
     userType: {
         type: String,
@@ -307,7 +306,7 @@ app.post('/api/login', [
         
         const { mobile, password, userType } = req.body;
         
-        const user = await UsersData.findOne({ mobile, userType }).select('password');;
+        const user = await UsersData.findOne({ mobile, userType });
         if (!user) {
             return res.status(401).json({
                 success: false,
